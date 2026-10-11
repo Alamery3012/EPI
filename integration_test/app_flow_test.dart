@@ -1,0 +1,101 @@
+// End-to-end walkthrough run on an Android emulator in CI.
+// It completes first-time setup, then visits the main screens and saves a
+// screenshot of each. Run with:
+//   flutter drive --driver=test_driver/integration_test.dart \
+//     --target=integration_test/app_flow_test.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+
+import 'package:epi_app/main.dart' as app;
+
+final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+Future<void> settle(WidgetTester t, [int frames = 25]) async {
+  for (var i = 0; i < frames; i++) {
+    await t.pump(const Duration(milliseconds: 200));
+  }
+}
+
+Future<void> shot(WidgetTester t, String name) async {
+  await settle(t, 5);
+  try {
+    await binding.takeScreenshot(name);
+  } catch (e) {
+    debugPrint('screenshot $name failed: $e');
+  }
+}
+
+void main() {
+  testWidgets('EPI app walkthrough', (t) async {
+    app.main();
+    await settle(t, 40);
+    await binding.convertFlutterSurfaceToImage();
+    await settle(t);
+    await shot(t, '01_setup_empty');
+
+    // ---- First-time setup: 10 fields in order ----
+    final values = ['TAB01', 'Hanan Al-Sulami', 'Al-Mansoura Health Centre', 'ADN07', 'Aden', 'Al-Mansoura',
+      '135790', '135790', '246802', '246802'];
+    final fields = find.byType(TextFormField);
+    expect(fields, findsNWidgets(values.length), reason: 'setup form fields');
+    for (var i = 0; i < values.length; i++) {
+      await t.ensureVisible(fields.at(i));
+      await t.enterText(fields.at(i), values[i]);
+      await settle(t, 2);
+    }
+    await shot(t, '02_setup_filled');
+    final save = find.byType(FilledButton).last;
+    await t.ensureVisible(save);
+    await t.tap(save);
+    await settle(t, 50);
+    await shot(t, '03_home_empty');
+
+    // ---- Register child screen ----
+    final fab = find.byType(FloatingActionButton);
+    if (fab.evaluate().isNotEmpty) {
+      await t.tap(fab.first);
+      await settle(t);
+      await shot(t, '04_register');
+      await t.pageBack();
+      await settle(t);
+    }
+
+    // ---- English layout ----
+    final toggle = find.text('English');
+    if (toggle.evaluate().isNotEmpty) {
+      await t.tap(toggle.first);
+      await settle(t);
+      await shot(t, '05_home_english');
+      final ar = find.text('العربية');
+      if (ar.evaluate().isNotEmpty) {
+        await t.tap(ar.first);
+        await settle(t);
+      }
+    }
+
+    // ---- Settings (admin PIN prompt if needed) ----
+    final gear = find.byIcon(Icons.settings_outlined);
+    if (gear.evaluate().isNotEmpty) {
+      await t.tap(gear.first);
+      await settle(t);
+      if (find.byType(AlertDialog).evaluate().isNotEmpty) {
+        await shot(t, '06_admin_pin');
+        await t.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), '246802');
+        await t.tap(find.descendant(of: find.byType(AlertDialog), matching: find.byType(FilledButton)));
+        await settle(t);
+      }
+      await shot(t, '07_settings');
+      await t.pageBack();
+      await settle(t);
+    }
+
+    // ---- Lock screen ----
+    final lock = find.byIcon(Icons.lock_outline);
+    if (lock.evaluate().isNotEmpty) {
+      await t.tap(lock.first);
+      await settle(t);
+      await shot(t, '08_lock');
+    }
+  });
+}
