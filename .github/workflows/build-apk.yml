@@ -35,29 +35,36 @@ jobs:
         run: bash tool/get_fonts.sh
 
       - name: Patch Android project (permissions, receivers, minSdk, native code)
-        run: python3 tool/patch_android.py
+        run: bash tool/ci_run.sh patch python3 tool/patch_android.py
 
       - name: Get packages
-        run: flutter pub get
+        run: bash tool/ci_run.sh pub-get flutter pub get
 
       - name: Static analysis
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: bash tool/ci_run.sh analyze flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Unit tests (clinical engine, IDs, Excel package)
-        run: flutter test
+        run: bash tool/ci_run.sh unit-tests flutter test
 
       - name: Build release APKs
         run: |
+          set -e
           mkdir -p dist
-          flutter build apk --release
+          bash tool/ci_run.sh build-release flutter build apk --release
           cp build/app/outputs/flutter-apk/app-release.apk dist/EPI-beta-0.1.0-universal.apk
-          flutter build apk --release --split-per-abi
+          bash tool/ci_run.sh build-split flutter build apk --release --split-per-abi
           for abi in armeabi-v7a arm64-v8a x86_64; do
             cp build/app/outputs/flutter-apk/app-$abi-release.apk dist/EPI-beta-0.1.0-$abi.apk
           done
-          flutter build apk --debug
+          bash tool/ci_run.sh build-debug flutter build apk --debug
           cp build/app/outputs/flutter-apk/app-debug.apk dist/EPI-beta-0.1.0-debug.apk
           ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EPI-build-logs
+          path: ci-logs/
 
       - uses: actions/upload-artifact@v4
         with:
