@@ -83,7 +83,7 @@ void main() {
       await t.tap(fab.first);
       await settle(t);
       await shot(t, '04_register');
-      await t.pageBack();
+      await t.binding.handlePopRoute(); // Android system Back
       await settle(t);
     }
 
@@ -112,7 +112,7 @@ void main() {
         await settle(t);
       }
       await shot(t, '07_settings');
-      await t.pageBack();
+      await t.binding.handlePopRoute(); // Android system Back
       await settle(t);
     }
 
