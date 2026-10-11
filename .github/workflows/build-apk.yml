@@ -5,6 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -71,6 +78,15 @@ jobs:
           name: EPI-beta-0.1.0-apk
           path: dist/*.apk
           if-no-files-found: error
+
+      - name: Publish APKs as a GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="beta-0.1.0-build${{ github.run_number }}"
+          gh release create "$tag" dist/*.apk --prerelease --target "${{ github.sha }}" \
+            --title "EPI app beta 0.1.0 (build ${{ github.run_number }})" \
+            --notes "Automatic build from ${{ github.sha }}. Install EPI-beta-0.1.0-universal.apk on any Android 8+ phone, or the arm64-v8a file on most modern phones."
 
   # Installs and runs the app on a real Android emulator (API 30, x86_64),
   # walks through the main screens and saves screenshots + logs.
@@ -140,3 +156,15 @@ jobs:
           path: |
             screenshots/
             logs/
+
+      - name: Push screenshots and logs to the ci-results branch
+        if: always()
+        run: |
+          mkdir -p /tmp/res && cp -r screenshots logs /tmp/res/ 2>/dev/null || true
+          cd /tmp/res
+          git init -q -b ci-results
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          echo "Emulator run for ${{ github.sha }} (run ${{ github.run_number }})" > README.md
+          git add -A && git commit -q -m "Emulator results run ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-results
