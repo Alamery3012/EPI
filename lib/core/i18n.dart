@@ -199,6 +199,7 @@ const Map<String, Map<String, String>> _strings = {
     'notif_title_after': 'زيارات تطعيم متأخرة',
     'notif_children': '{n} أطفال',
     // v0.2.0
+    'form_incomplete': 'أكمل الحقول المطلوبة المعلّمة بالأحمر',
     'admin_mode': 'أنت في وضع المشرف. كل تغيير هنا يُسجَّل في سجل التدقيق.',
     'age_any': 'كل الأعمار',
     'age_infant': 'أقل من سنة',
@@ -419,6 +420,7 @@ const Map<String, Map<String, String>> _strings = {
     'notif_title_after': 'Overdue vaccination visits',
     'notif_children': '{n} children',
     // v0.2.0
+    'form_incomplete': 'Complete the required fields marked in red',
     'admin_mode': 'You are in administrator mode. Every change here is written to the audit log.',
     'age_any': 'All ages',
     'age_infant': 'Under 1 year',

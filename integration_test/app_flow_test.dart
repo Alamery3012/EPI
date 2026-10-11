@@ -202,7 +202,10 @@ void main() {
       await tapKey(t, 'fab_register');
       await shot(t, 'register_form');
       await typeKey(t, 'reg_name', 'سارة محمد علي');
-      await t.tap(find.byIcon(Icons.female));
+      await t.testTextInput.receiveAction(TextInputAction.done); // close the keyboard
+      await settle(t, 6);
+      await reveal(t, find.byKey(const Key('reg_sex')));
+      await t.tap(find.descendant(of: find.byKey(const Key('reg_sex')), matching: find.byIcon(Icons.female)));
       await settle(t, 4);
       await tapKey(t, 'reg_dob');
       final ok = find.descendant(of: find.byType(DatePickerDialog), matching: find.byType(TextButton)).last;

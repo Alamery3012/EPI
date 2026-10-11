@@ -106,7 +106,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final okForm = _form.currentState!.validate();
     final okDob = _checkDob();
     if (!okForm || !okDob || _sex.isEmpty || _facilityId == null) {
-      if (_sex.isEmpty || _facilityId == null) toast(context, t('required'));
+      setState(() {}); // show the sex error under the selector
+      toast(context, t('form_incomplete'));
       return;
     }
     setState(() => _busy = true);
@@ -250,6 +251,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     onSelectionChanged: (s) => setState(() => _sex = s.isEmpty ? '' : s.first),
                   ),
                 ),
+                if (_validated && _sex.isEmpty)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 12, top: 6),
+                    child: Text(t('required'), style: const TextStyle(color: Brand.bad, fontSize: 12.5)),
+                  ),
                 const SizedBox(height: 14),
                 DateField(
                   key: const Key('reg_dob'),
