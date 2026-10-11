@@ -5,6 +5,7 @@
 //   flutter drive --driver=test_driver/integration_test.dart \
 //     --target=integration_test/app_flow_test.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -53,17 +54,48 @@ Future<void> step(WidgetTester t, String name, Future<void> Function() body) asy
   }
 }
 
-Future<void> tapKey(WidgetTester t, String key, {int frames = 12}) async {
-  final f = find.byKey(Key(key));
+/// The biggest vertical scrollable on screen (the page's main list).
+Finder mainScrollable() {
+  Element? best;
+  var area = 0.0;
+  for (final e in find.byType(Scrollable).evaluate()) {
+    final w = e.widget as Scrollable;
+    if (axisDirectionToAxis(w.axisDirection) != Axis.vertical) continue;
+    final box = e.renderObject;
+    if (box is! RenderBox || !box.hasSize) continue;
+    final a = box.size.width * box.size.height;
+    if (a > area) {
+      area = a;
+      best = e;
+    }
+  }
+  return find.byElementPredicate((e) => identical(e, best));
+}
+
+/// Scrolls the main list (down, then up) until [f] is built and visible.
+/// Lists build only what is on screen, so off-screen items must be revealed.
+Future<void> reveal(WidgetTester t, Finder f) async {
+  if (f.evaluate().isEmpty) {
+    try {
+      await t.scrollUntilVisible(f, 300, scrollable: mainScrollable(), maxScrolls: 30);
+    } catch (_) {
+      await t.scrollUntilVisible(f, -300, scrollable: mainScrollable(), maxScrolls: 30);
+    }
+  }
   await t.ensureVisible(f.first);
   await settle(t, 3);
+}
+
+Future<void> tapKey(WidgetTester t, String key, {int frames = 12}) async {
+  final f = find.byKey(Key(key));
+  await reveal(t, f);
   await t.tap(f.first);
   await settle(t, frames);
 }
 
 Future<void> typeKey(WidgetTester t, String key, String text) async {
   final f = find.byKey(Key(key));
-  await t.ensureVisible(f.first);
+  await reveal(t, f);
   await t.enterText(f.first, text);
   await settle(t, 2);
 }
@@ -82,10 +114,7 @@ Future<void> refreshHome(WidgetTester t) async {
   await settle(t, 30);
 }
 
-Future<void> scrollTo(WidgetTester t, Finder f) async {
-  await t.scrollUntilVisible(f, 250, scrollable: find.byType(Scrollable).first, maxScrolls: 40);
-  await settle(t, 3);
-}
+Future<void> scrollTo(WidgetTester t, Finder f) => reveal(t, f);
 
 Future<String> seedChild(String name, String sex, int ageDays, String guardian, List<HistoryEntry> history) async {
   final dob = addDays(today(), -ageDays);
@@ -161,7 +190,10 @@ void main() {
       intakeId = await seedChild('محمد سالم عوض', 'M', 150, 'ليلى عوض', const []);
       // Pull to refresh the home list.
       await refreshHome(t);
+      await reveal(t, find.byKey(Key('child_$overdueId')));
       expect(find.byKey(Key('child_$overdueId')), findsOneWidget);
+      await t.fling(mainScrollable(), const Offset(0, 1500), 2500); // back to top
+      await settle(t, 15);
       await shot(t, 'home_children');
     });
 

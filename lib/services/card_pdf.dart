@@ -14,6 +14,11 @@ import 'xlsx.dart';
 /// Single-page A4 immunization card (FRS-DOC-04..06). Headings and the
 /// clinical notice are provisional until MoPHP/EPI supply the official text.
 class CardPdf {
+  /// Arabic vowel marks (harakat) are dropped from printed text: the PDF
+  /// library's bidi step crashes on a vowel mark after a hamza letter
+  /// (e.g. "أُعطيت"), and the card reads the same without them.
+  static String printable(String s) => s.replaceAll(RegExp('[\u064B-\u0652\u0670]'), '');
+
   static final _blue = PdfColor.fromInt(0xFF0D7CBC);
   static final _orange = PdfColor.fromInt(0xFFE77632);
   static final _line = PdfColor.fromInt(0xFFB8C4CF);
@@ -38,7 +43,7 @@ class CardPdf {
     );
 
     pw.Widget txt(String s, {double size = 9.5, bool b = false, PdfColor? color, pw.TextAlign? align}) => pw.Text(
-          s,
+          printable(s),
           textDirection: dir,
           textAlign: align,
           style: pw.TextStyle(fontSize: size, fontWeight: b ? pw.FontWeight.bold : pw.FontWeight.normal, color: color),

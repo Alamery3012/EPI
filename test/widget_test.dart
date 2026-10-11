@@ -5,6 +5,7 @@ import 'package:epi_app/domain/child_id.dart';
 import 'package:epi_app/domain/engine.dart';
 import 'package:epi_app/domain/rules.dart';
 import 'package:epi_app/domain/text_match.dart';
+import 'package:epi_app/services/card_pdf.dart';
 import 'package:epi_app/services/xlsx.dart';
 import 'package:epi_app/data/models.dart';
 import 'package:epi_app/services/zip_writer.dart';
@@ -200,6 +201,53 @@ void main() {
       final en = XlsxExport.build(child: child, facility: null, schedule: s, campaignDoses: const [], user: 'test', language: 'en');
       expect(en.length, greaterThan(500));
     });
+  });
+
+
+  group('DOC-04: A4 card', () {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    Child kid(DateTime d) => Child(
+          id: 'ADN07-000002-6',
+          seq: 2,
+          name: 'فاطمة أحمد علي سالم',
+          nameLatin: 'Fatima Ahmed',
+          sex: 'F',
+          dob: d,
+          birthWeight: 3100,
+          facilityId: 1,
+          area: 'ريمي',
+          guardianName: 'أمل سالم',
+          guardianRelation: 'mother',
+          phone: '777123456',
+          createdBy: 'test',
+          createdAt: '2026-01-01T00:00:00Z',
+        );
+
+    test('vowel marks are removed from printed text', () {
+      expect(CardPdf.printable('أُعطيت'), 'أعطيت');
+      expect(CardPdf.printable('14 أسبوعًا'), '14 أسبوعا');
+    });
+
+    for (final lang in ['ar', 'en']) {
+      test('is exactly one page in $lang, with every status present', () async {
+        final now = addDays(dob, 300);
+        final given = {
+          for (final c in ['BCG', 'OPV0', 'HEPB0']) c: dob,
+          for (final c in ['PENTA1', 'OPV1', 'PCV1']) c: addDays(dob, 280),
+        };
+        final s = Engine.compute(dob: dob, given: given, asOf: now);
+        final statuses = s.doses.map((d) => d.status).toSet();
+        expect(statuses, containsAll([DoseStatus.given, DoseStatus.overdue, DoseStatus.waiting, DoseStatus.notEligible]));
+        final campaign = [
+          DoseRecord(id: 1, childId: 'x', code: 'CAMPAIGN', status: 'campaign', givenDate: addDays(dob, 200),
+              source: 'campaign', campaignName: 'حملة شلل الأطفال الوطنية', ruleVersion: 'v', createdBy: 't', createdAt: 't'),
+        ];
+        final bytes = await CardPdf.build(child: kid(dob), facility: const Facility(1, 'ADN07', 'مركز المنصورة الصحي', 'عدن', 'المنصورة'),
+            schedule: s, campaignDoses: campaign, language: lang);
+        final pages = RegExp(r'/Type\s*/Page[^s]').allMatches(String.fromCharCodes(bytes)).length;
+        expect(pages, 1);
+      });
+    }
   });
 
   test('rule table is consistent', () {
