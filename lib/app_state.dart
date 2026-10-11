@@ -132,12 +132,14 @@ class AppState extends ChangeNotifier {
     required int facilityId,
     required String workerPin,
     required String adminPin,
+    int offsetBefore = 3,
+    int offsetAfter = 3,
   }) async {
     await Repo.setSetting('device_code', deviceCode.toUpperCase());
     await Repo.setSetting('worker_name', workerName);
     await Repo.setSetting('default_facility', '$facilityId');
-    await Repo.setSetting('offset_before', '3');
-    await Repo.setSetting('offset_after', '3');
+    await Repo.setSetting('offset_before', '$offsetBefore');
+    await Repo.setSetting('offset_after', '$offsetAfter');
     await Repo.setSetting('language', Lang.current.value);
     await setPin(Role.worker, workerPin);
     await setPin(Role.admin, adminPin);

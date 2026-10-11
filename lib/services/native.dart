@@ -47,5 +47,8 @@ class NativeBridge {
   /// Clears native preferences, keys and alarms (FRS-SEC-10).
   static Future<void> wipe() => _ch.invokeMethod('wipe');
 
+  /// Child ID from a tapped reminder ('*' for a grouped reminder), once.
+  static Future<String?> takeLaunchChild() => _ch.invokeMethod<String>('takeLaunchChild');
+
   static Future<String> appVersion() async => (await _ch.invokeMethod<String>('appVersion')) ?? '';
 }

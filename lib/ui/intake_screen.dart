@@ -126,7 +126,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           t('intake_done'),
           if (missed != null) tf('first_missed', {'m': Lang.isAr ? RuleSet.milestone(missed).ar : RuleSet.milestone(missed).en}),
         ].join('\n\n')),
-        actions: [FilledButton(onPressed: () => Navigator.pop(c), child: Text(t('close')))],
+        actions: [FilledButton(key: const Key('intake_close'), onPressed: () => Navigator.pop(c), child: Text(t('close')))],
       ),
     );
     if (mounted) Navigator.pop(context, true);
@@ -168,10 +168,15 @@ class _IntakeScreenState extends State<IntakeScreen> {
               onSelectionChanged: (s) => setState(() => _source = s.first),
             ),
           ],
-          LinearProgressIndicator(
-            value: (_step + 1) / _milestones.length,
-            backgroundColor: Brand.line,
-            color: Brand.blue,
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (_step + 1) / _milestones.length,
+              minHeight: 8,
+              backgroundColor: Brand.line,
+              color: Brand.blue,
+            ),
           ),
           SectionTitle('${lang == 'ar' ? ms.ar : ms.en} · ${tf('milestone_of', {'i': _step + 1, 'n': _milestones.length})}'),
           for (final r in _rulesFor(ms.index)) _doseCard(r, c),
@@ -184,6 +189,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
             if (_step > 0) const SizedBox(width: 12),
             Expanded(
               child: FilledButton(
+                key: const Key('intake_next'),
                 onPressed: _busy ? null : _next,
                 child: Text(_step == _milestones.length - 1 ? t('finish') : t('next')),
               ),

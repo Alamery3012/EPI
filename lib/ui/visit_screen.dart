@@ -10,8 +10,8 @@ import '../domain/engine.dart';
 import '../domain/rules.dart';
 import 'common.dart';
 
-/// Records one visit (FRS-VIS-01..04). Only doses valid on the chosen date can
-/// be ticked; the others show why they are blocked.
+/// Records one visit: date, site, facility and doses (FRS-VIS-01..04). Only
+/// doses valid on the chosen date can be selected; the others show why.
 class VisitScreen extends StatefulWidget {
   final Child child;
   const VisitScreen({super.key, required this.child});
@@ -23,6 +23,8 @@ class VisitScreen extends StatefulWidget {
 class _VisitScreenState extends State<VisitScreen> {
   DateTime _date = today();
   String _site = 'fixed';
+  int? _facilityId;
+  List<Facility> _facilities = [];
   Map<String, DateTime> _given = {};
   Schedule? _schedule;
   final Set<String> _ticked = {};
@@ -32,15 +34,19 @@ class _VisitScreenState extends State<VisitScreen> {
   @override
   void initState() {
     super.initState();
+    _facilityId = app.defaultFacilityId ?? widget.child.facilityId;
     _load();
   }
 
   Future<void> _load() async {
     final recs = await Repo.doses(widget.child.id);
+    final fac = await Repo.facilities();
     final g = Repo.givenMap(recs);
     if (!mounted) return;
     setState(() {
       _given = g;
+      _facilities = fac;
+      if (_facilityId != null && !fac.any((f) => f.id == _facilityId)) _facilityId = fac.isEmpty ? null : fac.first.id;
       _schedule = Engine.compute(dob: widget.child.dob, given: g, asOf: _date);
     });
   }
@@ -62,11 +68,11 @@ class _VisitScreenState extends State<VisitScreen> {
       toast(context, t('select_one'));
       return;
     }
-    // Recheck every ticked dose with the final set before saving.
     for (final code in _ticked) {
       final r = RuleSet.byCode(code)!;
-      if (_blockReason(r) != null) {
-        toast(context, '${r.label(Lang.current.value)}: ${_blockReason(r)}');
+      final b = _blockReason(r);
+      if (b != null) {
+        toast(context, '${r.label(Lang.current.value)}: $b');
         return;
       }
     }
@@ -75,7 +81,7 @@ class _VisitScreenState extends State<VisitScreen> {
       childId: widget.child.id,
       date: _date,
       site: _site,
-      facilityId: app.defaultFacilityId,
+      facilityId: _facilityId,
       given: _ticked.toList(),
       notGivenReasons: reasons,
     );
@@ -88,81 +94,163 @@ class _VisitScreenState extends State<VisitScreen> {
     final s = _schedule;
     final lang = Lang.current.value;
     final open = s == null ? <DoseState>[] : s.doses.where((d) => d.status != DoseStatus.given && d.status != DoseStatus.notEligible).toList();
+    final ready = open.where((d) => _blockReason(d.rule) == null || _ticked.contains(d.rule.code)).toList();
+    final later = open.where((d) => !ready.contains(d)).toList();
     return Scaffold(
       appBar: AppBar(title: Text(t('record_visit')), actions: const [LangToggle()]),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Color(0x140B3954), blurRadius: 16, offset: Offset(0, -4))]),
+          child: Row(children: [
+            Expanded(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tf('n_selected', {'n': _ticked.length}), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                Text(fmt(_date), style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
+              ]),
+            ),
+            SizedBox(
+              width: 170,
+              child: FilledButton.icon(
+                key: const Key('visit_save'),
+                onPressed: _busy ? null : _save,
+                icon: const Icon(Icons.check),
+                label: Text(t('save_visit')),
+              ),
+            ),
+          ]),
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
           Panel(
-            color: Brand.blueSoft,
-            child: Text('${widget.child.name} · ${widget.child.id}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            child: Row(children: [
+              Initials(widget.child.name, color: widget.child.sex == 'M' ? Brand.blue : Brand.orange, size: 44),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(widget.child.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5)),
+                  Text('${widget.child.id} · ${ageText(widget.child.dob, lang, at: _date)}',
+                      style: const TextStyle(color: Brand.muted, fontSize: 13)),
+                ]),
+              ),
+            ]),
           ),
-          const SizedBox(height: 12),
-          DateField(
-            label: t('visit_date'),
-            value: _date,
-            onTap: () async {
-              final d = await pickDate(context, initial: _date, first: widget.child.dob);
-              if (d != null) {
-                setState(() {
-                  _date = d;
-                  _ticked.clear();
-                });
-                _load();
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          SegmentedButton<String>(
-            segments: [
-              ButtonSegment(value: 'fixed', label: Text(t('site_fixed')), icon: const Icon(Icons.local_hospital_outlined)),
-              ButtonSegment(value: 'outreach', label: Text(t('site_outreach')), icon: const Icon(Icons.directions_walk)),
-            ],
-            selected: {_site},
-            onSelectionChanged: (v) => setState(() => _site = v.first),
+          const SizedBox(height: 14),
+          Panel(
+            child: Column(children: [
+              DateField(
+                label: t('visit_date'),
+                value: _date,
+                onTap: () async {
+                  final d = await pickDate(context, initial: _date, first: widget.child.dob);
+                  if (d != null) {
+                    setState(() {
+                      _date = d;
+                      _ticked.clear();
+                    });
+                    _load();
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'fixed', label: Text(t('site_fixed')), icon: const Icon(Icons.local_hospital_outlined)),
+                  ButtonSegment(value: 'outreach', label: Text(t('site_outreach')), icon: const Icon(Icons.directions_walk)),
+                ],
+                selected: {_site},
+                onSelectionChanged: (v) => setState(() => _site = v.first),
+              ),
+              if (_facilities.length > 1) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  value: _facilityId,
+                  isExpanded: true,
+                  decoration: InputDecoration(labelText: t('facility'), prefixIcon: const Icon(Icons.local_hospital_outlined)),
+                  items: [for (final f in _facilities) DropdownMenuItem(value: f.id, child: Text(f.name, overflow: TextOverflow.ellipsis))],
+                  onChanged: (v) => setState(() => _facilityId = v),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Row(children: [
+                const Icon(Icons.badge_outlined, size: 18, color: Brand.muted),
+                const SizedBox(width: 8),
+                Text('${t('health_worker')}: ${Repo.currentUser}', style: const TextStyle(color: Brand.muted)),
+              ]),
+            ]),
           ),
           SectionTitle(t('doses_today')),
           if (s == null) const Center(child: CircularProgressIndicator()),
-          if (s != null && open.isEmpty)
-            Padding(padding: const EdgeInsets.all(16), child: Text(t('no_doses_available'), style: const TextStyle(color: Brand.muted))),
-          for (final d in open) _doseTile(d, lang),
-          const SizedBox(height: 20),
-          FilledButton(onPressed: _busy ? null : _save, child: Text(t('save'))),
-          const SizedBox(height: 24),
+          if (s != null && ready.isEmpty)
+            Panel(
+              child: Row(children: [
+                const IconBadge(Icons.event_busy, Brand.muted),
+                const SizedBox(width: 12),
+                Expanded(child: Text(t('no_doses_available'), style: const TextStyle(color: Brand.muted))),
+              ]),
+            ),
+          for (final d in ready) _doseTile(d, lang),
+          if (later.isNotEmpty) ...[
+            SectionTitle(t('not_yet_today')),
+            for (final d in later) _doseTile(d, lang),
+          ],
         ],
       ),
     );
   }
 
   Widget _doseTile(DoseState d, String lang) {
-    final block = _ticked.contains(d.rule.code) ? null : _blockReason(d.rule);
     final ticked = _ticked.contains(d.rule.code);
-    final look = statusLook(d.status);
+    final block = ticked ? null : _blockReason(d.rule);
+    final color = statusLook(d.status).$2;
+    void toggle() => setState(() => ticked ? _ticked.remove(d.rule.code) : _ticked.add(d.rule.code));
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Panel(
-        padding: const EdgeInsets.fromLTRB(4, 4, 12, 8),
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        decoration: BoxDecoration(
+          color: ticked ? Brand.goodSoft : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: ticked ? Brand.good : Colors.transparent, width: 2),
+          boxShadow: Brand.cardShadow,
+        ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          CheckboxListTile(
-            value: ticked,
-            onChanged: block != null
-                ? null
-                : (v) => setState(() {
-                      if (v == true) {
-                        _ticked.add(d.rule.code);
-                      } else {
-                        _ticked.remove(d.rule.code);
-                      }
-                    }),
-            controlAffinity: ListTileControlAffinity.leading,
-            title: Text(d.rule.label(lang), style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(block ?? tf('due_on', {'d': fmt(d.dueDate)}),
-                style: TextStyle(color: block != null ? Brand.warn : Brand.muted, fontSize: 12.5)),
-            secondary: Pill(look.$1, look.$2),
+          InkWell(
+            key: Key('dose_${d.rule.code}'),
+            borderRadius: BorderRadius.circular(18),
+            onTap: block != null ? null : toggle,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: ticked ? Brand.good : (block != null ? Brand.surface : Color.alphaBlend(color.withOpacity(0.12), Colors.white)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(ticked ? Icons.check : Icons.vaccines_outlined,
+                      color: ticked ? Colors.white : (block != null ? Brand.muted : color)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(d.rule.label(lang),
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: block != null ? Brand.muted : Brand.ink)),
+                    const SizedBox(height: 2),
+                    Text(block ?? tf('due_on', {'d': fmt(d.dueDate)}),
+                        style: TextStyle(color: block != null ? Brand.warn : Brand.muted, fontSize: 12.5)),
+                  ]),
+                ),
+                statusPill(d.status),
+              ]),
+            ),
           ),
           if (!ticked && d.actionable)
             Padding(
-              padding: const EdgeInsetsDirectional.only(start: 16),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
               child: DropdownButtonFormField<String>(
                 value: _reasons[d.rule.code],
                 isExpanded: true,

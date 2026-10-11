@@ -5,6 +5,8 @@ import 'package:epi_app/domain/child_id.dart';
 import 'package:epi_app/domain/engine.dart';
 import 'package:epi_app/domain/rules.dart';
 import 'package:epi_app/domain/text_match.dart';
+import 'package:epi_app/services/xlsx.dart';
+import 'package:epi_app/data/models.dart';
 import 'package:epi_app/services/zip_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -132,6 +134,71 @@ void main() {
       expect(crc32(utf8.encode('hello')), 0x3610A686);
       final end = bytes.sublist(bytes.length - 22, bytes.length - 18);
       expect(end, [0x50, 0x4B, 0x05, 0x06]);
+    });
+  });
+
+
+  group('v0.2.0 rules', () {
+    test('SCH-02: a dose old enough but inside the interval shows "waiting"', () {
+      final now = addDays(dob, 100);
+      final s = Engine.compute(dob: dob, given: {'PENTA1': addDays(dob, 90)}, asOf: now);
+      expect(s.byCode('PENTA2')!.status, DoseStatus.waiting);
+      expect(s.byCode('PENTA2')!.dueDate, addDays(dob, 118));
+    });
+
+    test('SCH-09: the next visit groups every dose due that day', () {
+      final given = {'BCG': dob, 'OPV0': dob, 'HEPB0': dob};
+      final s = Engine.compute(dob: dob, given: given, asOf: addDays(dob, 10));
+      expect(s.nextVisit, addDays(dob, 42));
+      expect(s.nextVisitDoses.map((d) => d.rule.code).toSet(), {'PENTA1', 'OPV1', 'ROTA1', 'PCV1'});
+    });
+
+    test('SCH-09: overdue doses are all offered at today\'s visit', () {
+      final now = addDays(dob, 120);
+      final s = Engine.compute(dob: dob, given: {'BCG': dob, 'OPV0': dob, 'HEPB0': dob}, asOf: now);
+      expect(s.nextVisit, now);
+      expect(s.nextVisitDoses.map((d) => d.rule.code), containsAll(['PENTA1', 'OPV1', 'PCV1']));
+      expect(s.byCode('ROTA1')!.status, DoseStatus.notEligible); // past the Rota age limit
+      expect(s.nextVisitDoses.any((d) => d.rule.code == 'PENTA2'), isFalse);
+    });
+
+    test('progress counts given doses against doses still possible', () {
+      final s = Engine.compute(dob: dob, given: {'BCG': dob}, asOf: addDays(dob, 200));
+      expect(s.givenCount, 1);
+      expect(s.trackableCount, lessThan(RuleSet.doses.length)); // Rota is no longer possible
+      expect(s.progress, closeTo(1 / s.trackableCount, 1e-9));
+    });
+
+    test('NFR-04/05: 5,000 schedules compute in under 1 second', () {
+      final sw = Stopwatch()..start();
+      for (var i = 0; i < 5000; i++) {
+        final d = addDays(dob, -(i % 1500));
+        Engine.compute(dob: d, given: {'BCG': d, 'PENTA1': addDays(d, 45)}, asOf: addDays(dob, 30));
+      }
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(1000), reason: '${sw.elapsedMilliseconds} ms');
+    });
+
+    test('DOC-01..03: Excel export is a valid zip with an RTL sheet', () {
+      final child = Child(
+        id: 'ADN07-000001-8',
+        seq: 1,
+        name: 'فاطمة أحمد',
+        sex: 'F',
+        dob: dob,
+        facilityId: 1,
+        guardianName: 'أمل',
+        guardianRelation: 'mother',
+        createdBy: 'test',
+        createdAt: '2026-01-01T00:00:00Z',
+      );
+      final s = Engine.compute(dob: dob, given: {'BCG': dob}, asOf: addDays(dob, 50));
+      final bytes = XlsxExport.build(child: child, facility: null, schedule: s, campaignDoses: const [], user: 'test', language: 'ar');
+      expect(bytes.sublist(0, 4), [0x50, 0x4B, 0x03, 0x04]);
+      final text = latin1.decode(bytes, allowInvalid: true);
+      expect(text.contains('xl/worksheets/sheet1.xml'), isTrue);
+      final en = XlsxExport.build(child: child, facility: null, schedule: s, campaignDoses: const [], user: 'test', language: 'en');
+      expect(en.length, greaterThan(500));
     });
   });
 

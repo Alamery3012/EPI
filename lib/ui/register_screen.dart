@@ -187,97 +187,153 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     return Scaffold(
       appBar: AppBar(title: Text(_editing ? t('edit_child') : t('register_child')), actions: const [LangToggle()]),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            key: const Key('reg_save'),
+            onPressed: _busy ? null : _save,
+            icon: _busy
+                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.check),
+            label: Text(_editing ? t('save') : t('save_child')),
+          ),
+        ),
+      ),
       body: Form(
         key: _form,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          key: const Key('reg_list'),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
+            if (_editing)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Panel(
+                  color: Brand.blueSoft,
+                  child: Row(children: [
+                    const Icon(Icons.info_outline, color: Brand.blueDark),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(t('edit_hint'))),
+                  ]),
+                ),
+              ),
             SectionTitle(t('child_details')),
-            TextFormField(controller: _name, decoration: InputDecoration(labelText: t('child_name')), validator: _req),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _latin,
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(labelText: t('child_name_latin')),
+            Panel(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                TextFormField(
+                  key: const Key('reg_name'),
+                  controller: _name,
+                  decoration: InputDecoration(labelText: t('child_name'), prefixIcon: const Icon(Icons.child_care)),
+                  validator: _req,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('reg_latin'),
+                  controller: _latin,
+                  textDirection: TextDirection.ltr,
+                  decoration: InputDecoration(labelText: t('child_name_latin'), prefixIcon: const Icon(Icons.translate)),
+                ),
+                const SizedBox(height: 14),
+                Text(t('sex'), style: const TextStyle(color: Brand.muted, fontSize: 13)),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<String>(
+                    key: const Key('reg_sex'),
+                    segments: [
+                      ButtonSegment(value: 'M', label: Text(t('male')), icon: const Icon(Icons.male)),
+                      ButtonSegment(value: 'F', label: Text(t('female')), icon: const Icon(Icons.female)),
+                    ],
+                    selected: _sex.isEmpty ? <String>{} : {_sex},
+                    emptySelectionAllowed: true,
+                    onSelectionChanged: (s) => setState(() => _sex = s.isEmpty ? '' : s.first),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DateField(
+                  key: const Key('reg_dob'),
+                  label: t('dob'),
+                  value: _dob,
+                  error: _dobError,
+                  onTap: () async {
+                    final d = await pickDate(context, initial: _dob, first: addDays(today(), -RuleSet.maxChildAgeDays));
+                    if (d != null) {
+                      setState(() => _dob = d);
+                      _checkDob();
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('reg_weight'),
+                  controller: _weight,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: t('birth_weight'), prefixIcon: const Icon(Icons.monitor_weight_outlined)),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return null;
+                    final n = int.tryParse(v);
+                    return (n == null || n < 300 || n > 7000) ? t('weight_invalid') : null;
+                  },
+                ),
+              ]),
             ),
-            const SizedBox(height: 12),
-            Text(t('sex'), style: const TextStyle(color: Brand.muted)),
-            const SizedBox(height: 6),
-            SegmentedButton<String>(
-              segments: [
-                ButtonSegment(value: 'M', label: Text(t('male')), icon: const Icon(Icons.male)),
-                ButtonSegment(value: 'F', label: Text(t('female')), icon: const Icon(Icons.female)),
-              ],
-              selected: _sex.isEmpty ? <String>{} : {_sex},
-              emptySelectionAllowed: true,
-              onSelectionChanged: (s) => setState(() => _sex = s.isEmpty ? '' : s.first),
+            SectionTitle(t('location')),
+            Panel(
+              child: Column(children: [
+                DropdownButtonFormField<int>(
+                  key: const Key('reg_facility'),
+                  value: _facilityId,
+                  isExpanded: true,
+                  decoration: InputDecoration(labelText: t('facility'), prefixIcon: const Icon(Icons.local_hospital_outlined)),
+                  items: [
+                    for (final f in _facilities)
+                      DropdownMenuItem(value: f.id, child: Text('${f.name} · ${f.district} · ${f.governorate}', overflow: TextOverflow.ellipsis)),
+                  ],
+                  onChanged: (v) => setState(() => _facilityId = v),
+                  validator: (v) => v == null ? t('required') : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('reg_area'),
+                  controller: _area,
+                  decoration: InputDecoration(labelText: t('area'), prefixIcon: const Icon(Icons.place_outlined)),
+                ),
+              ]),
             ),
-            const SizedBox(height: 12),
-            DateField(
-              label: t('dob'),
-              value: _dob,
-              error: _dobError,
-              onTap: () async {
-                final d = await pickDate(context, initial: _dob, first: addDays(today(), -RuleSet.maxChildAgeDays));
-                if (d != null) {
-                  setState(() => _dob = d);
-                  _checkDob();
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _weight,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(labelText: t('birth_weight')),
-              validator: (v) {
-                if (v == null || v.isEmpty) return null;
-                final n = int.tryParse(v);
-                return (n == null || n < 300 || n > 7000) ? t('weight_invalid') : null;
-              },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              value: _facilityId,
-              isExpanded: true,
-              decoration: InputDecoration(labelText: t('facility')),
-              items: [
-                for (final f in _facilities)
-                  DropdownMenuItem(value: f.id, child: Text('${f.name} · ${f.district} · ${f.governorate}', overflow: TextOverflow.ellipsis)),
-              ],
-              onChanged: (v) => setState(() => _facilityId = v),
-              validator: (v) => v == null ? t('required') : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(controller: _area, decoration: InputDecoration(labelText: t('area'))),
             SectionTitle(t('guardian')),
-            TextFormField(controller: _guardian, decoration: InputDecoration(labelText: t('guardian_name')), validator: _req),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _relation,
-              decoration: InputDecoration(labelText: t('relation')),
-              items: [
-                DropdownMenuItem(value: 'mother', child: Text(t('rel_mother'))),
-                DropdownMenuItem(value: 'father', child: Text(t('rel_father'))),
-                DropdownMenuItem(value: 'other', child: Text(t('rel_other'))),
-              ],
-              onChanged: (v) => setState(() => _relation = v ?? 'mother'),
+            Panel(
+              child: Column(children: [
+                TextFormField(
+                  key: const Key('reg_guardian'),
+                  controller: _guardian,
+                  decoration: InputDecoration(labelText: t('guardian_name'), prefixIcon: const Icon(Icons.person_outline)),
+                  validator: _req,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _relation,
+                  decoration: InputDecoration(labelText: t('relation'), prefixIcon: const Icon(Icons.family_restroom)),
+                  items: [
+                    DropdownMenuItem(value: 'mother', child: Text(t('rel_mother'))),
+                    DropdownMenuItem(value: 'father', child: Text(t('rel_father'))),
+                    DropdownMenuItem(value: 'other', child: Text(t('rel_other'))),
+                  ],
+                  onChanged: (v) => setState(() => _relation = v ?? 'mother'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('reg_phone'),
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  textDirection: TextDirection.ltr,
+                  decoration: InputDecoration(labelText: t('phone'), hintText: '7XXXXXXXX', prefixIcon: const Icon(Icons.phone_outlined)),
+                  validator: (v) => (v == null || v.trim().isEmpty || isValidYemenMobile(v)) ? null : t('phone_invalid'),
+                ),
+              ]),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _phone,
-              keyboardType: TextInputType.phone,
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(labelText: t('phone'), hintText: '7XXXXXXXX'),
-              validator: (v) => (v == null || v.trim().isEmpty || isValidYemenMobile(v)) ? null : t('phone_invalid'),
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _busy ? null : _save,
-              child: _busy ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text(t('save')),
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
           ],
         ),
       ),

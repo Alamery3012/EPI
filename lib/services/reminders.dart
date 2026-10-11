@@ -4,7 +4,6 @@ import '../app_state.dart';
 import '../core/dates.dart';
 import '../core/i18n.dart';
 import '../data/repo.dart';
-import '../domain/engine.dart';
 import 'native.dart';
 
 /// Rebuilds every reminder and calendar event from the database
@@ -29,11 +28,15 @@ class Reminders {
 
   static Future<void> _alarms(List<ChildSummary> list) async {
     final now = DateTime.now();
+    final lang = Lang.current.value;
+    // date|kind -> lines "name (ID): doses", plus the child IDs for deep links.
     final groups = <String, List<String>>{};
+    final ids = <String, List<String>>{};
     for (final s in list) {
       final next = s.schedule.nextVisit;
       if (next == null) continue;
       final overdue = s.schedule.hasOverdue;
+      final doses = s.schedule.nextVisitDoses.map((d) => d.rule.label(lang)).join(lang == 'ar' ? '، ' : ', ');
       final plan = <MapEntry<String, int>>[
         if (!overdue) MapEntry('before', -app.offsetBefore),
         const MapEntry('on', 0),
@@ -44,7 +47,9 @@ class Reminders {
         final at = DateTime(d.year, d.month, d.day, 9);
         if (!at.isAfter(now)) continue;
         final kind = overdue && p.key == 'on' ? 'after' : p.key;
-        (groups['${iso(d)}|$kind'] ??= []).add('${s.child.name} (${s.child.id})');
+        final key = '${iso(d)}|$kind';
+        (groups[key] ??= []).add('${s.child.name} (${s.child.id}): $doses');
+        (ids[key] ??= []).add(s.child.id);
       }
     }
     final alarms = <Map<String, Object?>>[];
@@ -54,19 +59,21 @@ class Reminders {
       final parts = k.split('|');
       final d = parseIso(parts[0]);
       final kind = parts[1];
-      final names = groups[k]!;
+      final lines = groups[k]!;
       final title = kind == 'before'
           ? tf('notif_title_before', {'n': app.offsetBefore})
           : kind == 'on'
               ? t('notif_title_on')
               : t('notif_title_after');
-      final shown = names.take(5).join('، ');
-      final more = names.length > 5 ? ' …' : '';
+      final shown = lines.take(6).join('\n');
+      final more = lines.length > 6 ? '\n…' : '';
       alarms.add({
         'id': id++,
         'at': DateTime(d.year, d.month, d.day, 9).millisecondsSinceEpoch,
-        'title': '$title - ${tf('notif_children', {'n': names.length})}',
+        'title': '$title · ${fmt(d)} · ${tf('notif_children', {'n': lines.length})}',
         'body': '$shown$more',
+        // One child opens the record; several open the due list (FRS-REM-02, 03).
+        'child': lines.length == 1 ? ids[k]!.first : '',
       });
     }
     await NativeBridge.setReminders(alarms);
@@ -84,10 +91,7 @@ class Reminders {
         }
         continue;
       }
-      final doses = s.schedule.doses
-          .where((d) => d.actionable || (d.status == DoseStatus.upcoming && d.dueDate == next))
-          .map((d) => d.rule.label(Lang.current.value))
-          .join(', ');
+      final doses = s.schedule.nextVisitDoses.map((d) => d.rule.label(Lang.current.value)).join(', ');
       final start = DateTime(next.year, next.month, next.day, 9).millisecondsSinceEpoch;
       // Child ID only, no name, in the shared calendar (FRS-REM-10).
       final newId = await NativeBridge.calendarUpsert(

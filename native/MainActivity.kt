@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -40,12 +41,29 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureLaunch(intent)
         // Hide child data from screenshots and the recent-apps preview (FRS-SEC-06).
         // Debug builds skip this so QA can take screenshots; release builds always set it.
         val debuggable = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         if (!debuggable) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
+    }
+
+    /** Child ID carried by a tapped reminder, read once by the app after unlock. */
+    private var launchChild: String? = null
+
+    private fun captureLaunch(i: Intent?) {
+        val c = i?.getStringExtra("epi_child")
+        if (!c.isNullOrEmpty()) {
+            launchChild = c
+            i?.removeExtra("epi_child")
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        captureLaunch(intent)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -91,6 +109,10 @@ class MainActivity : FlutterActivity() {
                             // nothing to delete
                         }
                         result.success(true)
+                    }
+                    "takeLaunchChild" -> {
+                        result.success(launchChild)
+                        launchChild = null
                     }
                     "appVersion" -> {
                         val info = packageManager.getPackageInfo(packageName, 0)

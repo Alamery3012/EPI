@@ -24,8 +24,10 @@ class CardPdf {
     required Facility? facility,
     required Schedule schedule,
     required List<DoseRecord> campaignDoses,
+    String? language,
   }) async {
-    final lang = Lang.current.value;
+    final lang = language ?? Lang.current.value;
+    String t(String k) => tIn(lang, k);
     final ar = lang == 'ar';
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/Amiri-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/Amiri-Bold.ttf'));
@@ -61,6 +63,7 @@ class CardPdf {
           DoseStatus.overdue => PdfColor.fromInt(0xFFC0392B),
           DoseStatus.due => _blue,
           DoseStatus.upcoming => PdfColors.grey800,
+          DoseStatus.waiting => PdfColor.fromInt(0xFF6B4FA0),
           DoseStatus.notEligible => PdfColor.fromInt(0xFFB7791F),
         };
 
@@ -88,7 +91,7 @@ class CardPdf {
           cell(d.rule.label(lang)),
           cell(d.status == DoseStatus.notEligible ? '-' : fmt(d.dueDate)),
           cell(d.givenDate == null ? '' : fmt(d.givenDate)),
-          cell(XlsxExport.statusLabel(d.status), color: statusColor(d.status)),
+          cell(XlsxExport.statusLabel(d.status, lang), color: statusColor(d.status)),
         ],
       ));
     }
@@ -170,8 +173,16 @@ class CardPdf {
           pw.Spacer(),
           pw.Divider(color: _line, thickness: 0.5),
           pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-            txt('${t('next_visit')}: ${fmt(schedule.nextVisit)}', size: 10, b: true, color: _blue),
-            txt('${t('rule_version')}: ${schedule.ruleVersion}  |  ${fmt(today())}', size: 8.5, color: PdfColors.grey700),
+            pw.Expanded(
+              child: txt(
+                  '${t('next_visit')}: ${fmt(schedule.nextVisit)}'
+                  '${schedule.nextVisitDoses.isEmpty ? '' : ' - ${schedule.nextVisitDoses.map((d) => d.rule.label(lang)).join(ar ? '، ' : ', ')}'}',
+                  size: 10,
+                  b: true,
+                  color: _blue),
+            ),
+            pw.SizedBox(width: 8),
+            txt('${t('rule_version')}: ${schedule.ruleVersion}  |  ${t('printed_on')} ${fmt(today())}', size: 8.5, color: PdfColors.grey700),
           ]),
         ],
       ),

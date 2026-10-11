@@ -10,13 +10,17 @@ import 'zip_writer.dart';
 /// Builds a standards-compliant single-sheet .xlsx for one child
 /// (FRS-DOC-01..03). Strings are inline, so no shared-strings part is needed.
 class XlsxExport {
-  static String statusLabel(DoseStatus s) => switch (s) {
-        DoseStatus.given => t('st_given'),
-        DoseStatus.due => t('st_due'),
-        DoseStatus.overdue => t('st_overdue'),
-        DoseStatus.upcoming => t('st_upcoming'),
-        DoseStatus.notEligible => t('st_noelig'),
-      };
+  static String statusLabel(DoseStatus s, [String? lang]) {
+    String t(String k) => tIn(lang ?? Lang.current.value, k);
+    return switch (s) {
+      DoseStatus.given => t('st_given'),
+      DoseStatus.due => t('st_due'),
+      DoseStatus.overdue => t('st_overdue'),
+      DoseStatus.upcoming => t('st_upcoming'),
+      DoseStatus.waiting => t('st_waiting'),
+      DoseStatus.notEligible => t('st_noelig'),
+    };
+  }
 
   static Uint8List build({
     required Child child,
@@ -24,8 +28,10 @@ class XlsxExport {
     required Schedule schedule,
     required List<DoseRecord> campaignDoses,
     required String user,
+    String? language,
   }) {
-    final lang = Lang.current.value;
+    final lang = language ?? Lang.current.value;
+    String t(String k) => tIn(lang, k);
     final rows = <List<_Cell>>[];
     void row(List<Object?> values, {bool bold = false}) =>
         rows.add([for (final v in values) _Cell(v == null ? '' : '$v', bold)]);
@@ -44,7 +50,12 @@ class XlsxExport {
     row([t('facility'), facility == null ? '' : '${facility.name} (${facility.code})']);
     row([t('area'), child.area]);
     row([t('guardian_name'), child.guardianName]);
+    row([t('relation'), t('rel_${child.guardianRelation ?? 'other'}')]);
     row([t('phone'), child.phone]);
+    row([t('next_visit'), fmt(schedule.nextVisit)]);
+    if (schedule.nextVisitDoses.isNotEmpty) {
+      row([t('next_visit_doses'), schedule.nextVisitDoses.map((d) => d.rule.label(lang)).join(lang == 'ar' ? '، ' : ', ')]);
+    }
     row([]);
     row([
       lang == 'ar' ? 'المرحلة' : 'Milestone',
@@ -60,7 +71,7 @@ class XlsxExport {
         d.rule.label(lang),
         d.status == DoseStatus.notEligible ? '-' : fmt(d.dueDate),
         d.givenDate == null ? '' : fmt(d.givenDate),
-        statusLabel(d.status),
+        statusLabel(d.status, lang),
       ]);
     }
     for (final c in campaignDoses) {

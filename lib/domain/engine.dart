@@ -1,7 +1,9 @@
 import '../core/dates.dart';
 import 'rules.dart';
 
-enum DoseStatus { given, due, overdue, upcoming, notEligible }
+/// waiting = old enough for the dose, but the minimum interval or live-vaccine
+/// spacing has not passed yet (FRS-SCH-02 "contraindicated by spacing").
+enum DoseStatus { given, due, overdue, upcoming, waiting, notEligible }
 
 class DoseState {
   final DoseRule rule;
@@ -22,6 +24,25 @@ class Schedule {
   const Schedule(this.doses, this.nextVisit, this.firstMissedMilestone, this.ruleVersion);
 
   int count(DoseStatus s) => doses.where((d) => d.status == s).length;
+
+  /// Doses that are given, or still possible for this child (progress ring).
+  int get givenCount => count(DoseStatus.given);
+  int get trackableCount => doses.where((d) => d.status != DoseStatus.notEligible || d.givenDate != null).length;
+  double get progress => trackableCount == 0 ? 0 : givenCount / trackableCount;
+
+  /// Every dose that can be given at the next visit, so the family makes as
+  /// few trips as possible (FRS-SCH-09).
+  List<DoseState> get nextVisitDoses {
+    final n = nextVisit;
+    if (n == null) return const [];
+    return [
+      for (final d in doses)
+        if (d.status != DoseStatus.given &&
+            d.status != DoseStatus.notEligible &&
+            !(d.actionable ? n : (d.dueDate ?? n)).isAfter(n))
+          d
+    ];
+  }
   bool get hasOverdue => doses.any((d) => d.status == DoseStatus.overdue);
   bool get hasDue => doses.any((d) => d.actionable);
   DoseState? byCode(String code) {
@@ -106,7 +127,10 @@ class Engine {
 
       if (due.isAfter(now)) {
         projected[r.code] = due;
-        states.add(DoseState(r, DoseStatus.upcoming, dueDate: due, earliest: earliest));
+        // Old enough by age, but held back by an interval or live spacing.
+        final byAge = addDays(dob, r.targetDays);
+        final status = !byAge.isAfter(now) ? DoseStatus.waiting : DoseStatus.upcoming;
+        states.add(DoseState(r, status, dueDate: due, earliest: earliest));
       } else {
         // Due or overdue: catch-up assumes it is given today, so later doses
         // are pushed forward from today (FRS-SCH-08).
@@ -121,7 +145,7 @@ class Engine {
     for (final s in states) {
       DateTime? d;
       if (s.actionable) d = now;
-      if (s.status == DoseStatus.upcoming) d = s.dueDate;
+      if (s.status == DoseStatus.upcoming || s.status == DoseStatus.waiting) d = s.dueDate;
       if (d != null && (next == null || d.isBefore(next))) next = d;
     }
 

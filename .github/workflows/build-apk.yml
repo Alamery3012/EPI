@@ -16,6 +16,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Production signing (FRS-SEC-08). Add these repository secrets to sign
+      # with YFCA's key; without them the build is signed with a debug key.
+      EPI_KEYSTORE_B64: ${{ secrets.EPI_KEYSTORE_B64 }}
+      EPI_KEYSTORE_PASSWORD: ${{ secrets.EPI_KEYSTORE_PASSWORD }}
+      EPI_KEY_ALIAS: ${{ secrets.EPI_KEY_ALIAS }}
+      EPI_KEY_PASSWORD: ${{ secrets.EPI_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,8 +45,18 @@ jobs:
       - name: Generate Android platform files
         run: flutter create --org org.yfca --project-name epi_app --platforms android .
 
-      - name: Download Arabic font for the A4 card
+      - name: Download open-source fonts (interface and A4 card)
         run: bash tool/get_fonts.sh
+
+      - name: Production signing key (only when the secret is set)
+        run: |
+          if [ -n "$EPI_KEYSTORE_B64" ]; then
+            echo "$EPI_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/epi-release.jks"
+            echo "EPI_KEYSTORE=$RUNNER_TEMP/epi-release.jks" >> "$GITHUB_ENV"
+            echo "Release builds will be signed with the production key."
+          else
+            echo "::notice::No EPI_KEYSTORE_B64 secret: release APKs are signed with the debug key (test builds only)."
+          fi
 
       - name: Patch Android project (permissions, receivers, minSdk, native code)
         run: bash tool/ci_run.sh patch python3 tool/patch_android.py
@@ -57,15 +74,26 @@ jobs:
         run: |
           set -e
           mkdir -p dist
-          bash tool/ci_run.sh build-release flutter build apk --release
-          cp build/app/outputs/flutter-apk/app-release.apk dist/EPI-beta-0.1.0-universal.apk
-          bash tool/ci_run.sh build-split flutter build apk --release --split-per-abi
+          # Obfuscated release builds (FRS-SEC-08); symbols kept for crash analysis.
+          OBF="--obfuscate --split-debug-info=build/symbols"
+          bash tool/ci_run.sh build-release flutter build apk --release $OBF
+          cp build/app/outputs/flutter-apk/app-release.apk dist/EPI-beta-0.2.0-universal.apk
+          bash tool/ci_run.sh build-split flutter build apk --release --split-per-abi $OBF
           for abi in armeabi-v7a arm64-v8a x86_64; do
-            cp build/app/outputs/flutter-apk/app-$abi-release.apk dist/EPI-beta-0.1.0-$abi.apk
+            cp build/app/outputs/flutter-apk/app-$abi-release.apk dist/EPI-beta-0.2.0-$abi.apk
           done
           bash tool/ci_run.sh build-debug flutter build apk --debug
-          cp build/app/outputs/flutter-apk/app-debug.apk dist/EPI-beta-0.1.0-debug.apk
+          cp build/app/outputs/flutter-apk/app-debug.apk dist/EPI-beta-0.2.0-debug.apk
           ls -l dist
+
+      - name: APK size check (FRS-NFR-07, under 20 MB per architecture)
+        run: |
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            f=dist/EPI-beta-0.2.0-$abi.apk
+            mb=$(awk "BEGIN{printf \"%.1f\", $(stat -c%s $f)/1048576}")
+            echo "$abi: $mb MB"
+            awk "BEGIN{exit !($mb >= 20)}" && echo "::warning title=APK size::$abi is $mb MB (limit 20 MB)" || true
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -75,7 +103,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: EPI-beta-0.1.0-apk
+          name: EPI-beta-0.2.0-apk
           path: dist/*.apk
           if-no-files-found: error
 
@@ -83,10 +111,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="beta-0.1.0-build${{ github.run_number }}"
+          tag="beta-0.2.0-build${{ github.run_number }}"
           gh release create "$tag" dist/*.apk --prerelease --target "${{ github.sha }}" \
-            --title "EPI app beta 0.1.0 (build ${{ github.run_number }})" \
-            --notes "Automatic build from ${{ github.sha }}. Install EPI-beta-0.1.0-universal.apk on any Android 8+ phone, or the arm64-v8a file on most modern phones."
+            --title "EPI app beta 0.2.0 (build ${{ github.run_number }})" \
+            --notes "Automatic build from ${{ github.sha }}. Install EPI-beta-0.2.0-universal.apk on any Android 8+ phone, or the arm64-v8a file on most modern phones."
 
   # Installs and runs the app on a real Android emulator (API 30, x86_64),
   # walks through the main screens and saves screenshots + logs.
@@ -123,7 +151,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: EPI-beta-0.1.0-apk
+          name: EPI-beta-0.2.0-apk
           path: dist
 
       - name: Run on emulator
@@ -138,7 +166,7 @@ jobs:
           script: |
             mkdir -p screenshots logs
             adb logcat -c
-            adb install -r dist/EPI-beta-0.1.0-universal.apk
+            adb install -r dist/EPI-beta-0.2.0-universal.apk
             adb shell monkey -p org.yfca.epi_app -c android.intent.category.LAUNCHER 1
             sleep 15
             (adb shell pidof org.yfca.epi_app && echo "RELEASE APK RUNNING") | tee logs/release_smoke.txt || echo "RELEASE APK NOT RUNNING" | tee logs/release_smoke.txt

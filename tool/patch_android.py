@@ -45,8 +45,62 @@ def patch_gradle():
             new, k = re.subn(r"(release\s*\{)", r"\1\n            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'", new, count=1)
         if k == 0:
             fail("release build type not found in " + path)
+    # Compressed native libraries keep each APK under 20 MB (FRS-NFR-07), and an
+    # optional production signing key comes from CI secrets (FRS-SEC-08).
+    if "EPI_KEYSTORE" not in new:
+        if path.endswith(".kts"):
+            block = KTS_ANDROID
+            sign_old = 'signingConfig = signingConfigs.getByName("debug")'
+            sign_new = ('signingConfig = if (System.getenv("EPI_KEYSTORE") != null) '
+                        'signingConfigs.getByName("release") else signingConfigs.getByName("debug")')
+        else:
+            block = GROOVY_ANDROID
+            sign_old = "signingConfig signingConfigs.debug"
+            sign_new = 'signingConfig System.getenv("EPI_KEYSTORE") != null ? signingConfigs.release : signingConfigs.debug'
+        new, k = re.subn(r"(\nandroid\s*\{\n)", lambda m: m.group(1) + block, new, count=1)
+        if k == 0:
+            fail("android { block not found in " + path)
+        if sign_old not in new:
+            fail("release signingConfig line not found in " + path)
+        new = new.replace(sign_old, sign_new, 1)
     open(path, "w", encoding="utf-8").write(new)
-    print("gradle: minSdk 26 and keep rules applied in " + os.path.basename(path))
+    print("gradle: minSdk 26, keep rules, compressed native libs and release signing applied in " + os.path.basename(path))
+
+
+KTS_ANDROID = """    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+    signingConfigs {
+        create("release") {
+            val ks = System.getenv("EPI_KEYSTORE")
+            if (ks != null) {
+                storeFile = file(ks)
+                storePassword = System.getenv("EPI_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("EPI_KEY_ALIAS")
+                keyPassword = System.getenv("EPI_KEY_PASSWORD")
+            }
+        }
+    }
+"""
+
+GROOVY_ANDROID = """    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+    signingConfigs {
+        release {
+            if (System.getenv("EPI_KEYSTORE") != null) {
+                storeFile file(System.getenv("EPI_KEYSTORE"))
+                storePassword System.getenv("EPI_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("EPI_KEY_ALIAS")
+                keyPassword System.getenv("EPI_KEY_PASSWORD")
+            }
+        }
+    }
+"""
 
 
 PROGUARD = """# EPI app keep rules

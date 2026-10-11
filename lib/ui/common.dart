@@ -7,18 +7,22 @@ import '../core/i18n.dart';
 import '../core/theme.dart';
 import '../domain/engine.dart';
 
-/// App-bar button that switches Arabic/English without leaving the screen.
+/// Button that switches Arabic/English without leaving the screen.
+/// [light] is for use on the blue header or lock screen.
 class LangToggle extends StatelessWidget {
-  const LangToggle({super.key});
+  final bool light;
+  const LangToggle({super.key, this.light = false});
 
   @override
   Widget build(BuildContext context) {
     watchLang(context);
-    return TextButton(
-        onPressed: () => app.updateSettings(lang: Lang.isAr ? 'en' : 'ar'),
-        style: TextButton.styleFrom(foregroundColor: Colors.white),
-        child: Text(t('lang_toggle')),
-      );
+    return TextButton.icon(
+      key: const Key('lang_toggle'),
+      onPressed: () => app.updateSettings(lang: Lang.isAr ? 'en' : 'ar'),
+      style: TextButton.styleFrom(foregroundColor: light ? Colors.white : Brand.blueDark),
+      icon: const Icon(Icons.translate, size: 18),
+      label: Text(t('lang_toggle')),
+    );
   }
 }
 
@@ -145,8 +149,24 @@ void toast(BuildContext context, String msg) =>
       DoseStatus.due => (t('st_due'), Brand.blueDark),
       DoseStatus.overdue => (t('st_overdue'), Brand.bad),
       DoseStatus.upcoming => (t('st_upcoming'), Brand.muted),
+      DoseStatus.waiting => (t('st_waiting'), Brand.wait),
       DoseStatus.notEligible => (t('st_noelig'), Brand.warn),
     };
+
+IconData statusIcon(DoseStatus s) => switch (s) {
+      DoseStatus.given => Icons.check_circle,
+      DoseStatus.due => Icons.vaccines,
+      DoseStatus.overdue => Icons.error,
+      DoseStatus.upcoming => Icons.schedule,
+      DoseStatus.waiting => Icons.hourglass_top,
+      DoseStatus.notEligible => Icons.block,
+    };
+
+/// Status chip for a dose.
+Widget statusPill(DoseStatus s) {
+  final l = statusLook(s);
+  return Pill(l.$1, l.$2, icon: statusIcon(s));
+}
 
 /// Overall child status for lists.
 (String, Color)? childLook(Schedule s) {
@@ -154,4 +174,93 @@ void toast(BuildContext context, String msg) =>
   if (s.hasDue) return statusLook(DoseStatus.due);
   if (s.nextVisit != null) return statusLook(DoseStatus.upcoming);
   return null;
+}
+
+DoseStatus? childStatus(Schedule s) {
+  if (s.hasOverdue) return DoseStatus.overdue;
+  if (s.hasDue) return DoseStatus.due;
+  if (s.nextVisit != null) return DoseStatus.upcoming;
+  return null;
+}
+
+/// Six dots showing how many PIN digits have been typed.
+class PinDots extends StatelessWidget {
+  final int filled;
+  final int length;
+  final bool error;
+  final Color color;
+  const PinDots({super.key, required this.filled, this.length = 6, this.error = false, this.color = Brand.blue});
+
+  @override
+  Widget build(BuildContext context) => Directionality(
+        textDirection: TextDirection.ltr,
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          for (var i = 0; i < length; i++)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.symmetric(horizontal: 7),
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i < filled ? (error ? Brand.bad : color) : Colors.transparent,
+                border: Border.all(color: error ? Brand.bad : (i < filled ? color : Brand.line), width: 2),
+              ),
+            ),
+        ]),
+      );
+}
+
+/// Large numeric keypad for PIN entry (works with gloves and small screens).
+class PinPad extends StatelessWidget {
+  final ValueChanged<String> onDigit;
+  final VoidCallback onDelete;
+  final bool enabled;
+  const PinPad({super.key, required this.onDigit, required this.onDelete, this.enabled = true});
+
+  Widget _key(BuildContext context, String label, {VoidCallback? onTap, Widget? child, String? semantics}) => Expanded(
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Semantics(
+            button: true,
+            label: semantics ?? label,
+            child: Material(
+              color: child == null ? Colors.white : Colors.transparent,
+              shape: const CircleBorder(),
+              child: InkWell(
+                key: Key('pin_$label'),
+                customBorder: const CircleBorder(),
+                onTap: enabled ? onTap : null,
+                child: SizedBox(
+                  height: 68,
+                  child: Center(
+                    child: child ?? Text(label, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w600, color: Brand.ink)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(List<String> ds) => Row(children: [for (final d in ds) _key(context, d, onTap: () => onDigit(d))]);
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        row(['1', '2', '3']),
+        row(['4', '5', '6']),
+        row(['7', '8', '9']),
+        Row(children: [
+          const Expanded(child: SizedBox()),
+          _key(context, '0', onTap: () => onDigit('0')),
+          _key(context, 'del',
+              onTap: onDelete,
+              semantics: t('delete'),
+              child: const Icon(Icons.backspace_outlined, color: Brand.muted)),
+        ]),
+      ]),
+    );
+  }
 }

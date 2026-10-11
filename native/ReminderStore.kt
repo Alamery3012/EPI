@@ -91,6 +91,7 @@ object ReminderStore {
             putExtra("id", o.getInt("id"))
             putExtra("title", o.optString("title"))
             putExtra("body", o.optString("body"))
+            putExtra("child", o.optString("child"))
         }
         return PendingIntent.getBroadcast(
             ctx, o.getInt("id"), i,

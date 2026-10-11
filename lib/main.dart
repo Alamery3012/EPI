@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_state.dart';
@@ -137,10 +138,13 @@ Redistribution and use in source and binary forms, with or without modification,
   * Neither the name of the ZETETIC LLC nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY ZETETIC LLC ''AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL ZETETIC LLC BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.""");
-    // TODO before release: replace with the full OFL-1.1 text shipped with the font (OFL.txt).
-    yield const LicenseEntryWithLineBreaks(['Amiri font'], """
-Copyright The Amiri Project Authors (https://github.com/aliftype/amiri).
-This Font Software is licensed under the SIL Open Font License, Version 1.1.
-License text: https://openfontlicense.org""");
+    // Full SIL OFL 1.1 texts shipped with the fonts (downloaded by tool/get_fonts.sh).
+    for (final f in const [('Amiri font', 'assets/licenses/Amiri-OFL.txt'), ('IBM Plex Sans Arabic font', 'assets/licenses/IBMPlexSansArabic-OFL.txt')]) {
+      try {
+        yield LicenseEntryWithLineBreaks([f.$1], await rootBundle.loadString(f.$2));
+      } catch (_) {
+        yield LicenseEntryWithLineBreaks([f.$1], 'SIL Open Font License, Version 1.1 - https://openfontlicense.org');
+      }
+    }
   });
 }

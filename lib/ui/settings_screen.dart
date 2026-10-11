@@ -115,6 +115,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _wipe() async {
+    // Always re-ask the administrator PIN, even inside settings (FRS-SEC-10).
+    final pin = await promptText(context, t('secure_wipe'), t('admin_pin'), obscure: true, digits: true);
+    if (pin == null || !mounted) return;
+    if (!await app.verifyAdmin(pin)) {
+      if (mounted) toast(context, t('wrong_pin'));
+      return;
+    }
+    if (!mounted) return;
     final typed = await promptText(context, t('secure_wipe'), t('wipe_warning'));
     if (typed == null || typed.toUpperCase() != app.deviceCode) return;
     if (!mounted) return;
@@ -127,81 +135,117 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     watchLang(context);
+    Widget tile(IconData icon, String title, {String? subtitle, VoidCallback? onTap, Widget? trailing, Color color = Brand.blueDark, Key? key}) =>
+        ListTile(
+          key: key,
+          leading: IconBadge(icon, color, size: 40),
+          title: Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: color == Brand.bad ? Brand.bad : Brand.ink)),
+          subtitle: subtitle == null ? null : Text(subtitle),
+          trailing: trailing ?? (onTap == null ? null : const Icon(Icons.chevron_right, color: Brand.muted)),
+          onTap: onTap,
+        );
     return Scaffold(
       appBar: AppBar(title: Text(t('settings')), actions: const [LangToggle()]),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: [
-          SectionTitle(t('language')),
-          SegmentedButton<String>(
-            segments: [
-              ButtonSegment(value: 'ar', label: Text(t('arabic'))),
-              ButtonSegment(value: 'en', label: Text(t('english'))),
-            ],
-            selected: {Lang.current.value},
-            onSelectionChanged: (s) async {
-              await app.updateSettings(lang: s.first);
-              setState(() {});
-            },
+          Panel(
+            color: Brand.blueSoft,
+            child: Row(children: [
+              const Icon(Icons.admin_panel_settings_outlined, color: Brand.blueDark),
+              const SizedBox(width: 10),
+              Expanded(child: Text(t('admin_mode'), style: const TextStyle(fontWeight: FontWeight.w500))),
+            ]),
           ),
-          SectionTitle(t('worker_name')),
-          TextField(controller: _worker, decoration: InputDecoration(labelText: t('worker_name'))),
+          SectionTitle(t('general')),
+          Panel(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(t('language'), style: const TextStyle(color: Brand.muted, fontSize: 13)),
+              const SizedBox(height: 6),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'ar', label: Text(t('arabic'))),
+                  ButtonSegment(value: 'en', label: Text(t('english'))),
+                ],
+                selected: {Lang.current.value},
+                onSelectionChanged: (s) async {
+                  await app.updateSettings(lang: s.first);
+                  setState(() {});
+                },
+              ),
+              const SizedBox(height: 14),
+              TextField(controller: _worker, decoration: InputDecoration(labelText: t('worker_name'), prefixIcon: const Icon(Icons.badge_outlined))),
+            ]),
+          ),
           SectionTitle(t('reminders')),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _before,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: InputDecoration(labelText: t('offset_before')),
+          Panel(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _before,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(labelText: t('offset_before')),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _after,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(labelText: t('offset_after')),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              FilledButton(key: const Key('settings_save'), onPressed: _saveReminders, child: Text(t('save'))),
+              const SizedBox(height: 4),
+              SwitchListTile(
+                value: app.calendarSync,
+                onChanged: _toggleCalendar,
+                title: Text(t('calendar_sync'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(t('calendar_hint')),
+                contentPadding: EdgeInsets.zero,
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                controller: _after,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: InputDecoration(labelText: t('offset_after')),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 10),
-          FilledButton(onPressed: _saveReminders, child: Text(t('save'))),
-          const SizedBox(height: 6),
-          SwitchListTile(
-            value: app.calendarSync,
-            onChanged: _toggleCalendar,
-            title: Text(t('calendar_sync')),
-            contentPadding: EdgeInsets.zero,
+            ]),
           ),
           SectionTitle(t('facilities')),
-          for (final f in _facilities)
-            Card(
-              child: ListTile(
-                title: Text(f.name),
-                subtitle: Text('${f.code} · ${f.district} · ${f.governorate}'),
-                trailing: f.id == app.defaultFacilityId ? const Icon(Icons.star, color: Brand.orange) : null,
-              ),
-            ),
-          OutlinedButton.icon(onPressed: _addFacility, icon: const Icon(Icons.add), label: Text(t('add_facility'))),
-          SectionTitle(t('audit_log')),
-          OutlinedButton.icon(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AuditScreen())),
-            icon: const Icon(Icons.fact_check_outlined),
-            label: Text(t('audit_log')),
+          Panel(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(children: [
+              for (final f in _facilities)
+                tile(Icons.local_hospital_outlined, f.name,
+                    subtitle: '${f.code} · ${f.district} · ${f.governorate}',
+                    trailing: f.id == app.defaultFacilityId ? const Icon(Icons.star_rounded, color: Brand.orange) : null),
+              tile(Icons.add, t('add_facility'), onTap: _addFacility, key: const Key('settings_add_facility')),
+            ]),
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(onPressed: _changeWorkerPin, icon: const Icon(Icons.password), label: Text(t('change_worker_pin'))),
+          SectionTitle(t('security')),
+          Panel(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(children: [
+              tile(Icons.fact_check_outlined, t('audit_log'),
+                  key: const Key('settings_audit'),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AuditScreen()))),
+              tile(Icons.password, t('change_worker_pin'), onTap: _changeWorkerPin),
+              tile(Icons.delete_forever_outlined, t('secure_wipe'), onTap: _wipe, color: Brand.bad),
+            ]),
+          ),
           SectionTitle(t('about')),
           Panel(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${t('app_version')}: $_version (${t('beta')})'),
-              Text('${t('device_code')}: ${app.deviceCode}'),
-              Text('${t('rule_version')}: ${RuleSet.version}'),
-              Text('${t('approval_ref')}: ${RuleSet.approvalRef}'),
+              InfoRow(Icons.info_outline, t('app_version'), '$_version (${t('beta')})'),
+              InfoRow(Icons.tablet_android_outlined, t('device_code'), app.deviceCode),
+              InfoRow(Icons.rule_folder_outlined, t('rule_version'), RuleSet.version),
+              InfoRow(Icons.verified_outlined, t('approval_ref'), RuleSet.approvalRef),
               const SizedBox(height: 8),
-              Text(t('provisional_note'), style: const TextStyle(color: Brand.warn)),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Brand.warnSoft, borderRadius: BorderRadius.circular(12)),
+                child: Text(t('provisional_note'), style: const TextStyle(color: Brand.warn)),
+              ),
               const SizedBox(height: 4),
               TextButton.icon(
                 onPressed: () => showLicensePage(context: context, applicationVersion: _version),
@@ -210,14 +254,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
           ),
-          SectionTitle(t('secure_wipe')),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: Brand.bad, side: const BorderSide(color: Brand.bad)),
-            onPressed: _wipe,
-            icon: const Icon(Icons.delete_forever_outlined),
-            label: Text(t('secure_wipe')),
-          ),
-          const SizedBox(height: 32),
         ],
       ),
     );
@@ -246,7 +282,9 @@ class AuditScreen extends StatelessWidget {
               final ts = e.ts.length >= 16 ? e.ts.substring(0, 16).replaceFirst('T', ' ') : e.ts;
               return ListTile(
                 dense: true,
-                title: Text('${e.action} · ${e.entity}${e.entityId == null ? '' : ' · ${e.entityId}'}'),
+                leading: const Icon(Icons.history_toggle_off, color: Brand.muted),
+                title: Text('${e.action} · ${e.entity}${e.entityId == null ? '' : ' · ${e.entityId}'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Text('$ts UTC · ${e.user}${e.detail == null ? '' : '\n${e.detail}'}'),
               );
             },
