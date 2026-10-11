@@ -17,6 +17,9 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   final _form = GlobalKey<FormState>();
+  // Re-run validation after a language switch so visible errors change language too.
+  bool _validated = false;
+  String _errLang = Lang.current.value;
   final _device = TextEditingController();
   final _worker = TextEditingController();
   final _fCode = TextEditingController();
@@ -32,6 +35,8 @@ class _SetupScreenState extends State<SetupScreen> {
   String? _req(String? v) => (v == null || v.trim().isEmpty) ? t('required') : null;
 
   Future<void> _save() async {
+    _validated = true;
+    _errLang = Lang.current.value;
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
@@ -54,6 +59,10 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     watchLang(context);
+    if (_validated && _errLang != Lang.current.value) {
+      _errLang = Lang.current.value;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _form.currentState?.validate());
+    }
     return Scaffold(
       appBar: AppBar(title: Text(t('setup_title')), actions: const [LangToggle()]),
       body: Form(

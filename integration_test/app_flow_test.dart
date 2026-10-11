@@ -42,24 +42,27 @@ void main() {
       '135790', '135790', '246802', '246802'];
     // The form is a lazy ListView: fill the first empty field on screen,
     // scrolling down when every visible field is already filled.
+    final done = <TextEditingController>{};
     for (var i = 0; i < values.length; i++) {
-      Finder? target;
-      for (var tries = 0; tries < 12 && target == null; tries++) {
-        final all = find.byType(TextFormField);
-        final n = all.evaluate().length;
-        for (var k = 0; k < n; k++) {
-          final w = t.widget<TextFormField>(all.at(k));
-          if ((w.controller?.text ?? '').isEmpty) { target = all.at(k); break; }
+      TextEditingController? ctrl;
+      for (var tries = 0; tries < 12 && ctrl == null; tries++) {
+        // Tree order = form order; take the first field not filled yet.
+        for (final e in find.byType(TextFormField).evaluate()) {
+          final c = (e.widget as TextFormField).controller;
+          if (c != null && !done.contains(c)) { ctrl = c; break; }
         }
-        if (target == null) {
+        if (ctrl == null) {
           await t.drag(find.byType(Scrollable).first, const Offset(0, -300));
           await settle(t, 3);
         }
       }
-      expect(target, isNotNull, reason: 'setup field ${i + 1}');
-      await t.ensureVisible(target!);
+      expect(ctrl, isNotNull, reason: 'setup field ${i + 1}');
+      // Stable finder: the field that owns this controller, wherever it scrolls.
+      final field = find.byWidgetPredicate((w) => w is TextFormField && identical(w.controller, ctrl));
+      await t.ensureVisible(field);
       await settle(t, 2);
-      await t.enterText(target, values[i]);
+      await t.enterText(field, values[i]);
+      done.add(ctrl!);
       await settle(t, 2);
     }
     await shot(t, '02_setup_filled');

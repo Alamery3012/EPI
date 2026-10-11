@@ -26,6 +26,9 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _form = GlobalKey<FormState>();
+  // Re-run validation after a language switch so visible errors change language too.
+  bool _validated = false;
+  String _errLang = Lang.current.value;
   final _name = TextEditingController();
   final _latin = TextEditingController();
   final _weight = TextEditingController();
@@ -98,6 +101,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       };
 
   Future<void> _save() async {
+    _validated = true;
+    _errLang = Lang.current.value;
     final okForm = _form.currentState!.validate();
     final okDob = _checkDob();
     if (!okForm || !okDob || _sex.isEmpty || _facilityId == null) {
@@ -176,6 +181,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     watchLang(context);
+    if (_validated && _errLang != Lang.current.value) {
+      _errLang = Lang.current.value;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _form.currentState?.validate());
+    }
     return Scaffold(
       appBar: AppBar(title: Text(_editing ? t('edit_child') : t('register_child')), actions: const [LangToggle()]),
       body: Form(
