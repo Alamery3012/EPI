@@ -40,16 +40,36 @@ void main() {
     // ---- First-time setup: 10 fields in order ----
     final values = ['TAB01', 'Hanan Al-Sulami', 'Al-Mansoura Health Centre', 'ADN07', 'Aden', 'Al-Mansoura',
       '135790', '135790', '246802', '246802'];
-    final fields = find.byType(TextFormField);
-    expect(fields, findsNWidgets(values.length), reason: 'setup form fields');
+    // The form is a lazy ListView: fill the first empty field on screen,
+    // scrolling down when every visible field is already filled.
     for (var i = 0; i < values.length; i++) {
-      await t.ensureVisible(fields.at(i));
-      await t.enterText(fields.at(i), values[i]);
+      Finder? target;
+      for (var tries = 0; tries < 12 && target == null; tries++) {
+        final all = find.byType(TextFormField);
+        final n = all.evaluate().length;
+        for (var k = 0; k < n; k++) {
+          final w = t.widget<TextFormField>(all.at(k));
+          if ((w.controller?.text ?? '').isEmpty) { target = all.at(k); break; }
+        }
+        if (target == null) {
+          await t.drag(find.byType(Scrollable).first, const Offset(0, -300));
+          await settle(t, 3);
+        }
+      }
+      expect(target, isNotNull, reason: 'setup field ${i + 1}');
+      await t.ensureVisible(target!);
+      await settle(t, 2);
+      await t.enterText(target, values[i]);
       await settle(t, 2);
     }
     await shot(t, '02_setup_filled');
+    for (var tries = 0; tries < 10 && find.byType(FilledButton).evaluate().isEmpty; tries++) {
+      await t.drag(find.byType(Scrollable).first, const Offset(0, -400));
+      await settle(t, 3);
+    }
     final save = find.byType(FilledButton).last;
     await t.ensureVisible(save);
+    await settle(t, 2);
     await t.tap(save);
     await settle(t, 50);
     await shot(t, '03_home_empty');
