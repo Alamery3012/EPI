@@ -161,6 +161,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: RefreshIndicator(
         onRefresh: _reload,
         child: CustomScrollView(
+          // Pull-to-refresh works even when the list is shorter than the screen.
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
               child: GradientHeader(

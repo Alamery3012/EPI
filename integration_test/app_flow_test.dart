@@ -45,10 +45,10 @@ Future<void> step(WidgetTester t, String name, Future<void> Function() body) asy
     failures.add('$name: $e');
     debugPrint('STEP FAIL $name: $e\n$st');
     await shot(t, 'FAIL_$name');
-    // Get back to a known screen.
-    for (var i = 0; i < 4; i++) {
-      await t.binding.handlePopRoute();
-      await settle(t, 4);
+    // Get back to the home screen without ever closing the app.
+    for (var i = 0; i < 6 && (app_main.navKey.currentState?.canPop() ?? false); i++) {
+      app_main.navKey.currentState!.pop();
+      await settle(t, 6);
     }
   }
 }
@@ -68,9 +68,18 @@ Future<void> typeKey(WidgetTester t, String key, String text) async {
   await settle(t, 2);
 }
 
+/// Android Back, but never on the home screen (that would close the app).
 Future<void> back(WidgetTester t) async {
-  await t.binding.handlePopRoute(); // Android system Back
+  if (app_main.navKey.currentState?.canPop() ?? false) {
+    await t.binding.handlePopRoute();
+  }
   await settle(t, 10);
+}
+
+/// Pull-to-refresh on the home list.
+Future<void> refreshHome(WidgetTester t) async {
+  await t.fling(find.byType(CustomScrollView), const Offset(0, 500), 1200);
+  await settle(t, 30);
 }
 
 Future<void> scrollTo(WidgetTester t, Finder f) async {
@@ -151,8 +160,7 @@ void main() {
       ]);
       intakeId = await seedChild('محمد سالم عوض', 'M', 150, 'ليلى عوض', const []);
       // Pull to refresh the home list.
-      await t.fling(find.byType(CustomScrollView), const Offset(0, 500), 1200);
-      await settle(t, 30);
+      await refreshHome(t);
       expect(find.byKey(Key('child_$overdueId')), findsOneWidget);
       await shot(t, 'home_children');
     });
