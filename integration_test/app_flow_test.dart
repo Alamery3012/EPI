@@ -9,7 +9,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:epi_app/main.dart' as app;
 
-final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+late final IntegrationTestWidgetsFlutterBinding binding;
 
 Future<void> settle(WidgetTester t, [int frames = 25]) async {
   for (var i = 0; i < frames; i++) {
@@ -27,6 +27,9 @@ Future<void> shot(WidgetTester t, String name) async {
 }
 
 void main() {
+  // Must run before testWidgets() so the integration binding is the one in use.
+  binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
   testWidgets('EPI app walkthrough', (t) async {
     app.main();
     await settle(t, 40);

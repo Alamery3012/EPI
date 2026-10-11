@@ -145,7 +145,7 @@ jobs:
             adb logcat -d -b crash > logs/release_crash.txt || true
             adb uninstall org.yfca.epi_app || true
             adb logcat -c
-            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/app_flow_test.dart -d emulator-5554 2>&1 | tee logs/flutter_drive.txt || true
+            timeout 1500 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/app_flow_test.dart -d emulator-5554 2>&1 | tee logs/flutter_drive.txt || true
             adb logcat -d > logs/logcat.txt || true
             adb logcat -d -b crash > logs/debug_crash.txt || true
 
